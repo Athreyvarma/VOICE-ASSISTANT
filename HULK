@@ -1,0 +1,156 @@
+import pyttsx3
+import speech_recognition as sr
+import datetime
+import requests
+import webbrowser
+import os
+import time
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+
+engine = pyttsx3.init()
+voices = engine.getProperty('voices')
+engine.setProperty('voice', voices[0])
+engine.setProperty('rate', 140)
+engine.setProperty('volume', 1.0)
+
+def speak(audio):
+    sentences = audio.split('. ')
+    for sentence in sentences:
+        print(f"Speaking: {sentence}")
+        engine.say(sentence)
+        engine.runAndWait()
+
+def wish_me():
+    hour = int(datetime.datetime.now().hour)
+    if 0 <= hour < 12:
+        speak("Good morning!")
+    elif 12 <= hour < 18:
+        speak("Good afternoon!")
+    else:
+        speak("Good evening!")
+    time.sleep(0.5)
+    speak("I am Hulk, your voice assistant.")
+    speak("I can tell you the time and date, report the current weather, tell jokes, motivate you, and open Google for you.")
+    speak("Just speak a command like 'What's the weather?' or 'Tell me a joke'.")
+    speak("How can I assist you today?")
+
+def take_command():
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening...")
+        r.pause_threshold = 0.8
+        r.energy_threshold = 400
+        try:
+            audio = r.listen(source, timeout=5, phrase_time_limit=10)
+            print("Recognizing...")
+            query = r.recognize_google(audio, language='en-in')
+            print(f"User said: {query}\n")
+            return query
+        except sr.WaitTimeoutError:
+            print("Timeout: No input received.")
+            return "None"
+        except sr.UnknownValueError:
+            print("Could not understand audio.")
+            return "None"
+        except sr.RequestError:
+            print("Speech recognition service is unavailable.")
+            return "None"
+
+def get_weather(city):
+    api_key = '29524f492fe5028a2415360fad49a8ca'
+    url = f'https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric'
+
+    try:
+        response = requests.get(url)
+        data = response.json()
+        if data.get('cod') == 200:
+            weather = data['weather'][0]['description']
+            temperature = data['main']['temp']
+            return f"The weather in {city} is {weather}. The temperature is {temperature} degrees Celsius."
+        else:
+            return "Error fetching weather information. Please check the city name and try again."
+    except requests.exceptions.RequestException:
+        return "Error: Unable to connect to the weather service."
+
+# ----------------------------------------
+# Train ML Model
+# ----------------------------------------
+
+sentences = [
+    "What is the time", "Tell me the time", "Current time please",
+    "What is the date today", "Tell me today's date", "Current date",
+    "What is the weather", "Tell me the weather", "Weather today",
+    "Tell me a joke", "Make me laugh", "Say something funny",
+    "Motivate me", "Give me motivation", "Say something motivational",
+    "Open Google", "Launch Google website", "Google please",
+    "Exit Hulk", "Goodbye Hulk", "Stop", "Exit", "Close Hulk"
+]
+
+intents = [
+    "tell_time", "tell_time", "tell_time",
+    "tell_date", "tell_date", "tell_date",
+    "get_weather", "get_weather", "get_weather",
+    "tell_joke", "tell_joke", "tell_joke",
+    "tell_motivation", "tell_motivation", "tell_motivation",
+    "open_google", "open_google", "open_google",
+    "exit", "exit", "exit", "exit", "exit"
+]
+
+vectorizer = TfidfVectorizer()
+X = vectorizer.fit_transform(sentences)
+classifier = LogisticRegression()
+classifier.fit(X, intents)
+
+def predict_intent(text):
+    X_test = vectorizer.transform([text])
+    prediction = classifier.predict(X_test)
+    return prediction[0]
+
+# ----------------------------------------
+# Main Program
+# ----------------------------------------
+
+if __name__ == "__main__":
+    wish_me()
+    while True:
+        query = take_command().lower()
+        if query == "none":
+            continue
+
+        intent = predict_intent(query)
+
+        if intent == 'tell_time':
+            str_time = datetime.datetime.now().strftime("%H:%M:%S")
+            speak(f"The time is {str_time}")
+
+        elif intent == 'tell_date':
+            str_date = datetime.datetime.now().strftime("%A, %B %d, %Y")
+            speak(f"Today's date is {str_date}")
+
+        elif intent == 'get_weather':
+            speak("Please specify the city.")
+            city = take_command()
+            if city != "none":
+                weather_info = get_weather(city)
+                speak(weather_info)
+            else:
+                speak("City name not recognized.")
+
+        elif intent == 'tell_joke':
+            speak("Why don't skeletons fight each other? They don't have the guts.")
+
+        elif intent == 'tell_motivation':
+            speak("Success is not final, failure is not fatal. It is the courage to continue that counts.")
+
+        elif intent == 'open_google':
+            webbrowser.open("https://www.google.com")
+            speak("Opening Google.")
+
+        elif intent == 'exit':
+            speak("Goodbye!")
+            break
+
+        else:
+            speak("Sorry, I can't handle that request yet.")
+            speak("Please try asking something else.")
